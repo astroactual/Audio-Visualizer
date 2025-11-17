@@ -1,0 +1,20 @@
+[project]
+name = "audio-visualizer"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "astroactual",email = "pilotmaddmatt@gmail.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pyaudiowpatch (>=0.2.12.7,<0.3.0.0)",
+    "numpy (>=2.3.5,<3.0.0)",
+    "sounddevice (>=0.5.3,<0.6.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
