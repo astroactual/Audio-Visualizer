@@ -4,14 +4,8 @@ import numpy as np
 import sounddevice as sd
 
 
-default_output = sd.query_devices(kind='output')    #find ddefault audio device
+default_output = sd.query_devices(kind='output')    #find default audio device
 print(f"Default: {default_output['name']}")
-
-
-CHUNK = 2**11       #num of data points read at one time
-RATE = 48000        #time resolution of the recording device (Hz)
-CHANNELS = 2        #stereo usually has 2 channels
-
 
 
 p=pyaudio.PyAudio() #start PyAudio instance
@@ -23,12 +17,14 @@ for i in range(p.get_device_count()):
     print ( i, dev.get('name'))
     if default_output['name'] in dev.get('name') and "[Loopback]" in dev.get('name'):
         print (f"This is default device from array {dev.get('name')} at index {i}")
-        dev_index = i
+        dev_index = i   #assign dev index to current index
 
 
 
 print(dev_index)    #personal check of dev index
-
+CHUNK = 2**11       #num of data points read at one time
+RATE = 48000        #time resolution of the recording device (Hz)
+CHANNELS = 2        #stereo usually has 2 channels
 
 
 #start streaming
