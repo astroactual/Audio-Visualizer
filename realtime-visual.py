@@ -25,17 +25,38 @@ print(dev_index)    #personal check of dev index
 CHUNK = 2**11       #num of data points read at one time
 RATE = 48000        #time resolution of the recording device (Hz)
 CHANNELS = 2        #stereo usually has 2 channels
+maxValue = 2**15
+bars = 50        
+
+
+
+#code below is for terminal visualization
 
 
 #start streaming
 stream=p.open(format=pyaudio.paInt16,channels=CHANNELS, rate=RATE, input=True, input_device_index=dev_index, frames_per_buffer=CHUNK)
 
+while True:
+    data = np.frombuffer(stream.read(1024),dtype=np.int16)
+    dataL = data[0::2]
+    dataR = data[1::2]
+    peakL = np.abs(np.max(dataL)-np.min(dataL))/maxValue
+    peakR = np.abs(np.max(dataR)-np.min(dataR))/maxValue
+    lString = "#"*int(peakL*bars)+"-"*int(bars-peakL*bars)
+    rString = "#"*int(peakR*bars)+"-"*int(bars-peakR*bars)
+    print("L=[%s]\tR=[%s]"%(lString, rString))
+
+
+
+'''
+
 #Loop for a few seconds, putting #'s for peaking in bars. This is the visualization
-for i in range(int(10*44100/1024)):
+for i in range(int(2048)):
     data = np.frombuffer(stream.read(CHUNK), dtype=np.int16)
-    peak=np.average(np.abs(data))*2
+    peak=np.average(np.abs(data))*4
     bars="#"*int(50*peak/2**16)
     print("%04d %05d %s"%(i,peak,bars))
+'''
 
 
 #close programs
