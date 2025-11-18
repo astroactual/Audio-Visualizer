@@ -4,6 +4,9 @@ import numpy as np
 import sounddevice as sd
 
 
+#TODO possibly reinvent the wheel with this: https://medium.com/geekculture/real-time-audio-wave-visualization-in-python-b1c5b96e2d39
+
+
 default_output = sd.query_devices(kind='output')    #find default audio device
 print(f"Default: {default_output['name']}")
 
