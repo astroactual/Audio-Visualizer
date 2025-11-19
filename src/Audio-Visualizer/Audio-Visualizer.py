@@ -1,5 +1,5 @@
 import pyqtgraph as pg
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PyQt6.QtCore import pyqtSignal, QThread
 import pyaudiowpatch as pyaudio
 import numpy as np
@@ -70,13 +70,19 @@ class AudioDataThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.visualizer = pg.plot()
-        self.setCentralWidget(self.visualizer)
+        self.central = QWidget()
+        self.central_layout = QVBoxLayout()
+        self.central.setLayout(self.central_layout)
 
-        # setting window geometry
-        # left = 100, top = 100
-        # width = 600, height = 500
-        self.visualizer.setGeometry(100, 100, 600, 500)
+        self.peak_visualizer = pg.plot()
+        self.peak_visualizer.setInteractive(False)
+        self.central_layout.addWidget(self.peak_visualizer)
+
+        self.spec_visualizer = pg.plot()
+        # self.spec_visualizer.setInteractive(False)
+        self.central_layout.addWidget(self.spec_visualizer)
+
+        self.setCentralWidget(self.central)
 
         # setting window title to plot window
         self.setWindowTitle("Audio Visualization")
@@ -85,23 +91,37 @@ class MainWindow(QMainWindow):
         self.num_samples = 25
 
         # create list for each audio channel
-        self.left_audio_levels = [0] * self.num_samples
-        self.right_audio_levels = [0] * self.num_samples
+        self.left_peak_audio_levels = [0] * self.num_samples
+        self.right_peak_audio_levels = [0] * self.num_samples
 
         # create horizontal list i.e x-axis
-        self.x = [i + 1 for i in range(self.num_samples)]
+        self.peak_x = [i for i in range(self.num_samples)]
+
+        self.left_spec_audio_levels = [0] * 513
+        self.right_spec_audio_levels = [0] * 513
+
+        # create horizontal list i.e x-axis
+        self.spec_x = [i for i in range(513)]
 
         # create pyqt5graph bar graph item
         # with width = 0.6
         # with bar colors = green
-        self.left_graph = pg.BarGraphItem(x = self.x, height = self.left_audio_levels, width = .6, brush ='g')
-        self.right_graph = pg.BarGraphItem(x = self.x, height = self.right_audio_levels, width = .6, brush ='g')
+        self.left_peak_graph = pg.BarGraphItem(x = self.peak_x, height = self.left_peak_audio_levels, width = .6, brush ='g')
+        self.right_peak_graph = pg.BarGraphItem(x = self.peak_x, height = self.right_peak_audio_levels, width = .6, brush ='g')
+
+        self.left_spec_graph = pg.BarGraphItem(x = self.spec_x, height = self.left_spec_audio_levels, width = 40, brush ='w')
+        self.right_spec_graph = pg.BarGraphItem(x = self.spec_x, height = self.right_spec_audio_levels, width = 40, brush ='w')
 
         # add item to plot window
         # adding bargraph item to the window
-        self.visualizer.addItem(self.left_graph)
-        self.visualizer.addItem(self.right_graph)
-        self.visualizer.setYRange(-0.5, 0.5)
+        self.peak_visualizer.addItem(self.left_peak_graph)
+        self.peak_visualizer.addItem(self.right_peak_graph)
+        self.peak_visualizer.setYRange(-0.5, 0.5)
+
+        self.spec_visualizer.addItem(self.left_spec_graph)
+        self.spec_visualizer.addItem(self.right_spec_graph)
+        self.spec_visualizer.setXRange(0, 5000)
+        self.spec_visualizer.setYRange(-900000, 900000)
 
         # create the audio data reading thread
         self.audio_data_thread = AudioDataThread()
@@ -126,20 +146,36 @@ class MainWindow(QMainWindow):
         # there has to be a better way to do what is about to be coded
 
         # remove the first item from the list (left most sample)
-        self.left_audio_levels.pop(0)
-        self.right_audio_levels.pop(0)
+        self.left_peak_audio_levels.pop(0)
+        self.right_peak_audio_levels.pop(0)
         # remove THE ENTIRE  left and right graphs (super inefficient)
-        self.visualizer.removeItem(self.left_graph)
-        self.visualizer.removeItem(self.right_graph)
+        self.peak_visualizer.removeItem(self.left_peak_graph)
+        self.peak_visualizer.removeItem(self.right_peak_graph)
         # append the newest value to the audio levels array
-        self.left_audio_levels.append(peakL)
-        self.right_audio_levels.append(peakR)
+        self.left_peak_audio_levels.append(peakL)
+        self.right_peak_audio_levels.append(peakR)
         # COMPLETLEY RECREATE THE left and right graphs (continuing inefficency)
-        self.left_graph = pg.BarGraphItem(x = self.x, height = self.left_audio_levels, width = 0.6, brush ='g')
-        self.right_graph = pg.BarGraphItem(x = self.x, height = self.right_audio_levels, width = 0.6, brush ='g')
+        self.left_peak_graph = pg.BarGraphItem(x = self.peak_x, height = self.left_peak_audio_levels, width = 0.6, brush ='g')
+        self.right_peak_graph = pg.BarGraphItem(x = self.peak_x, height = self.right_peak_audio_levels, width = 0.6, brush ='g')
         # and the newly created graphs back to the visualizer
-        self.visualizer.addItem(self.left_graph)
-        self.visualizer.addItem(self.right_graph)
+        self.peak_visualizer.addItem(self.left_peak_graph)
+        self.peak_visualizer.addItem(self.right_peak_graph)
+
+        self.spec_visualizer.removeItem(self.left_spec_graph)
+        self.spec_visualizer.removeItem(self.right_spec_graph)
+
+        # spectrogram is tough and requires FAST FORIER TRANSFORMS which is diffeq stuff so we'll let numpy handle the specifics
+        # learned what i needed from this https://www.yhoka.com/en/posts/fft-python/ 
+        dataL_y = np.abs(np.fft.rfft(dataL).astype(np.float64))
+        dataL_x = np.fft.rfftfreq(len(dataL), 1 / self.audio_data_thread.RATE)
+        self.left_spec_graph = pg.BarGraphItem(x = dataL_x, height = dataL_y, width = 50, brush ='w')
+
+        dataR_y = -1 * np.abs(np.fft.rfft(dataR).astype(np.float64))
+        dataR_x = np.fft.rfftfreq(len(dataR), 1 / self.audio_data_thread.RATE)
+        self.right_spec_graph = pg.BarGraphItem(x = dataR_x, height = dataR_y, width = 50, brush ='w')
+
+        self.spec_visualizer.addItem(self.left_spec_graph)
+        self.spec_visualizer.addItem(self.right_spec_graph)
         # i know theres a simpler data update but im lazy and this works
 
 # main method
