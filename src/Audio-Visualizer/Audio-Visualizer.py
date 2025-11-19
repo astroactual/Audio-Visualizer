@@ -1,69 +1,151 @@
-
+import pyqtgraph as pg
+from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtCore import pyqtSignal, QThread
 import pyaudiowpatch as pyaudio
 import numpy as np
 import sounddevice as sd
-
+import numpy as np
+import sys
 
 #TODO possibly reinvent the wheel with this: https://medium.com/geekculture/real-time-audio-wave-visualization-in-python-b1c5b96e2d39
 
+# a QThread for audio data reading
+class AudioDataThread(QThread):
 
-default_output = sd.query_devices(kind='output')    #find default audio device
-print(f"Default: {default_output['name']}")
+    new_lr_data = pyqtSignal(tuple) # pyqtSignal for sending data
 
+    thread_continue = True
 
-p=pyaudio.PyAudio() #start PyAudio instance
+    def __init__(self):
+        super().__init__(None)
+        self.p=pyaudio.PyAudio() #start PyAudio instance
+        self.stream:pyaudio.Stream
 
+        # TODO: make rate and channels variable based on the audio device configuration
+        self.CHUNK = 2**11       #num of data points read at one time
+        self.RATE = 48000        #time resolution of the recording device (Hz)
+        self.CHANNELS = 2        #stereo usually has 2 channels
+        self.maxValue = 2**15
+        self.bars = 50
 
-#for all devices connected, compare names. If default device name has the word "Loopback", set as PyAudio device index
-for i in range(p.get_device_count()):
-    dev = p.get_device_info_by_index(i)
-    print ( i, dev.get('name'))
-    if default_output['name'] in dev.get('name') and "[Loopback]" in dev.get('name'):
-        print (f"This is default device from array {dev.get('name')} at index {i}")
-        dev_index = i   #assign dev index to current index
+        default_output = sd.query_devices(kind='output')    #find default audio device
+        print(f"Default: {default_output['name']}")
 
+        #for all devices connected, compare names. If default device name has the word "Loopback", set as PyAudio device index
+        for i in range(self.p.get_device_count()):
+            dev = self.p.get_device_info_by_index(i)
+            print ( i, dev.get('name'))
+            if default_output['name'] in dev.get('name') and "[Loopback]" in dev.get('name'):
+                print (f"This is default device from array {dev.get('name')} at index {i}")
+                dev_index = i   #assign dev index to current index
 
+        self.stream = self.p.open(format=pyaudio.paInt16,channels=self.CHANNELS, rate=self.RATE, input=True, input_device_index=dev_index, frames_per_buffer=self.CHUNK)
 
-print(dev_index)    #personal check of dev index
-CHUNK = 2**11       #num of data points read at one time
-RATE = 48000        #time resolution of the recording device (Hz)
-CHANNELS = 2        #stereo usually has 2 channels
-maxValue = 2**15
-bars = 50        
+    # get the left and right data
+    def get_lr_data(self):
+        data = np.frombuffer(self.stream.read(1024),dtype=np.int16)
+        dataL = data[0::2]
+        dataR = data[1::2]
+        return dataL, dataR
 
+    # close audio stream and terminate pyaudio
+    def close(self):
+        self.stream.stop_stream()
+        self.stream.close()
+        self.p.terminate()
 
+    def kill(self): # lol
+        self.thread_continue = False
 
-#code below is for terminal visualization
+    # the QThread loop function
+    def run(self):
+        # loop until thread_continue is set to False
+        while self.thread_continue:
+            dataL, dataR = self.get_lr_data()
+            self.new_lr_data.emit((dataL, dataR)) # emit the data as a QT Signal to be captured in a QT Slot
+        
+        # close that ish
+        self.close()
 
+class MainWindow(QMainWindow):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.visualizer = pg.plot()
+        self.setCentralWidget(self.visualizer)
 
-#start streaming
-stream=p.open(format=pyaudio.paInt16,channels=CHANNELS, rate=RATE, input=True, input_device_index=dev_index, frames_per_buffer=CHUNK)
+        # setting window geometry
+        # left = 100, top = 100
+        # width = 600, height = 500
+        self.visualizer.setGeometry(100, 100, 600, 500)
 
-while True:
-    data = np.frombuffer(stream.read(1024),dtype=np.int16)
-    dataL = data[0::2]
-    dataR = data[1::2]
-    peakL = np.abs(np.max(dataL)-np.min(dataL))/maxValue
-    peakR = np.abs(np.max(dataR)-np.min(dataR))/maxValue
-    lString = "#"*int(peakL*bars)+"-"*int(bars-peakL*bars)
-    rString = "#"*int(peakR*bars)+"-"*int(bars-peakR*bars)
-    print("L=[%s]\tR=[%s]"%(lString, rString))
+        # setting window title to plot window
+        self.setWindowTitle("Audio Visualization")
+        
+        # how long the graph is
+        self.num_samples = 25
 
+        # create list for each audio channel
+        self.left_audio_levels = [0] * self.num_samples
+        self.right_audio_levels = [0] * self.num_samples
 
+        # create horizontal list i.e x-axis
+        self.x = [i + 1 for i in range(self.num_samples)]
 
-'''
+        # create pyqt5graph bar graph item
+        # with width = 0.6
+        # with bar colors = green
+        self.left_graph = pg.BarGraphItem(x = self.x, height = self.left_audio_levels, width = .6, brush ='g')
+        self.right_graph = pg.BarGraphItem(x = self.x, height = self.right_audio_levels, width = .6, brush ='g')
 
-#Loop for a few seconds, putting #'s for peaking in bars. This is the visualization
-for i in range(int(2048)):
-    data = np.frombuffer(stream.read(CHUNK), dtype=np.int16)
-    peak=np.average(np.abs(data))*4
-    bars="#"*int(50*peak/2**16)
-    print("%04d %05d %s"%(i,peak,bars))
-'''
+        # add item to plot window
+        # adding bargraph item to the window
+        self.visualizer.addItem(self.left_graph)
+        self.visualizer.addItem(self.right_graph)
+        self.visualizer.setYRange(-0.5, 0.5)
 
+        # create the audio data reading thread
+        self.audio_data_thread = AudioDataThread()
+        # connect the data signal to the update function
+        self.audio_data_thread.new_lr_data.connect(self.update_visualizer)
+        # start the thread
+        self.audio_data_thread.start()
 
-#close programs
-stream.stop_stream()
-stream.close()
-p.terminate()
+    #code below is for terminal visualization (for testing)
+    def terminal_visualization(self, dataL, dataR):
+        peakL = np.abs(np.max(dataL)-np.min(dataL))/self.audio_data_thread.maxValue
+        peakR = -1 * np.abs(np.max(dataR)-np.min(dataR))/self.audio_data_thread.maxValue
+        lString = "#"*int(peakL*self.audio_data_thread.bars)+"-"*int(self.audio_data_thread.bars-peakL*self.audio_data_thread.bars)
+        rString = "#"*int(peakR*self.audio_data_thread.bars)+"-"*int(self.audio_data_thread.bars-peakR*self.audio_data_thread.bars)
+        print("L=[%s]\tR=[%s]"%(lString, rString))
+
+    def update_visualizer(self, lrdata):
+        dataL, dataR = lrdata
+        peakL = np.abs(np.max(dataL)-np.min(dataL))/self.audio_data_thread.maxValue
+        peakR = -1 * np.abs(np.max(dataR)-np.min(dataR))/self.audio_data_thread.maxValue
+        
+        # there has to be a better way to do what is about to be coded
+
+        # remove the first item from the list (left most sample)
+        self.left_audio_levels.pop(0)
+        self.right_audio_levels.pop(0)
+        # remove THE ENTIRE  left and right graphs (super inefficient)
+        self.visualizer.removeItem(self.left_graph)
+        self.visualizer.removeItem(self.right_graph)
+        # append the newest value to the audio levels array
+        self.left_audio_levels.append(peakL)
+        self.right_audio_levels.append(peakR)
+        # COMPLETLEY RECREATE THE left and right graphs (continuing inefficency)
+        self.left_graph = pg.BarGraphItem(x = self.x, height = self.left_audio_levels, width = 0.6, brush ='g')
+        self.right_graph = pg.BarGraphItem(x = self.x, height = self.right_audio_levels, width = 0.6, brush ='g')
+        # and the newly created graphs back to the visualizer
+        self.visualizer.addItem(self.left_graph)
+        self.visualizer.addItem(self.right_graph)
+        # i know theres a simpler data update but im lazy and this works
+
+# main method
+if __name__ == "__main__":
+    app = QApplication(sys.argv) # pass args to the app class
+    AudioVisualizer = MainWindow() # create the visualizer main window object
+    AudioVisualizer.show() # show that bish on the screen
+    app.exec() # start the qt even loop
 
