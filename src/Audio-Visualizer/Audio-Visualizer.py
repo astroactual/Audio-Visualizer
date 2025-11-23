@@ -43,7 +43,7 @@ class AudioDataThread(QThread):
 
     # get the left and right data
     def get_lr_data(self):
-        data = np.frombuffer(self.stream.read(1024),dtype=np.int16)
+        data = np.frombuffer(self.stream.read(512),dtype=np.int16)      #MATT COMMENT: Changed read from 1024 to 512 for smoother visual
         dataL = data[0::2]
         dataR = data[1::2]
         return dataL, dataR
