@@ -43,7 +43,7 @@ class AudioDataThread(QThread):
 
     # get the left and right data
     def get_lr_data(self):
-        data = np.frombuffer(self.stream.read(512),dtype=np.int16)      #MATT COMMENT: Changed read from 1024 to 512 for smoother visual
+        data = np.frombuffer(self.stream.read(1024),dtype=np.int16)
         dataL = data[0::2]
         dataR = data[1::2]
         return dataL, dataR
@@ -97,11 +97,13 @@ class MainWindow(QMainWindow):
         # create horizontal list i.e x-axis
         self.peak_x = [i for i in range(self.num_samples)]
 
-        self.left_spec_audio_levels = [0] * 513
-        self.right_spec_audio_levels = [0] * 513
+        self.num_spec_bytes = 513
+
+        self.left_spec_audio_levels = np.array([0] * self.num_spec_bytes)
+        self.right_spec_audio_levels = np.array([0] * self.num_spec_bytes)
 
         # create horizontal list i.e x-axis
-        self.spec_x = [i for i in range(513)]
+        self.spec_x = [i for i in range(self.num_spec_bytes)]
 
         # create pyqt5graph bar graph item
         # with width = 0.6
@@ -164,15 +166,28 @@ class MainWindow(QMainWindow):
         self.spec_visualizer.removeItem(self.left_spec_graph)
         self.spec_visualizer.removeItem(self.right_spec_graph)
 
-        # spectrogram is tough and requires FAST FORIER TRANSFORMS which is diffeq stuff so we'll let numpy handle the specifics
-        # learned what i needed from this https://www.yhoka.com/en/posts/fft-python/ 
-        dataL_y = np.abs(np.fft.rfft(dataL).astype(np.float64))
-        dataL_x = np.fft.rfftfreq(len(dataL), 1 / self.audio_data_thread.RATE)
-        self.left_spec_graph = pg.BarGraphItem(x = dataL_x, height = dataL_y, width = 50, brush ='w')
+        # alpha filter smoothing formula: smoothed = (new_data * alpha) + (last_smoothed * beta)
+        #                                   where last_smoothed = the smoothed value from the previous new_data collection
+        #                                   alpha is a float percent (0.0 through 1.0)
+        #                                   beta = 1 - alpha
+        # parameters for alpha filter
+        alpha = 0.5 # or a 50% weight with the last sample
+        beta = 1 - alpha
 
-        dataR_y = -1 * np.abs(np.fft.rfft(dataR).astype(np.float64))
+        # spectrogram is tough and requires FAST FORIER TRANSFORMS which is diffeq stuff so we'll let numpy handle the specifics
+        # learned what i needed from this https://www.yhoka.com/en/posts/fft-python/
+        self.spec_visualizer.removeItem(self.left_spec_graph)
+        self.spec_visualizer.removeItem(self.right_spec_graph)
+
+        dataL_y = np.abs(np.fft.rfftn(dataL).astype(np.float64))
+        dataL_x = np.fft.rfftfreq(len(dataL), 1 / self.audio_data_thread.RATE)
+        self.left_spec_audio_levels = (dataL_y * alpha) + (self.left_spec_audio_levels * beta) # applying alpha filter
+        self.left_spec_graph = pg.BarGraphItem(x = dataL_x, height = self.left_spec_audio_levels, width = 45, brush ='w')
+
+        dataR_y = -1 * np.abs(np.fft.rfftn(dataR).astype(np.float64))
         dataR_x = np.fft.rfftfreq(len(dataR), 1 / self.audio_data_thread.RATE)
-        self.right_spec_graph = pg.BarGraphItem(x = dataR_x, height = dataR_y, width = 50, brush ='w')
+        self.right_spec_audio_levels = (dataR_y * alpha) + (self.right_spec_audio_levels * beta) # applying alpha filter
+        self.right_spec_graph = pg.BarGraphItem(x = dataR_x, height = self.right_spec_audio_levels, width = 45, brush ='w')
 
         self.spec_visualizer.addItem(self.left_spec_graph)
         self.spec_visualizer.addItem(self.right_spec_graph)
