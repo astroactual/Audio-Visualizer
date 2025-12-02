@@ -6,6 +6,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual_plotext import PlotextPlot
 from textual.worker import Worker
+from textual.message import Message
 
 #TODO possibly reinvent the wheel with this: https://medium.com/geekculture/real-time-audio-wave-visualization-in-python-b1c5b96e2d39
 
@@ -49,7 +50,11 @@ class AudioData():
         self.stream.close()
         self.p.terminate()
 
-class TUI_APP(App[None]):
+class TuiApp(App[None]):
+
+    class GraphUpdateMessage(Message):
+        def __init__(self) -> None:
+            super().__init__()
 
     def __init__(self):
         super().__init__()
@@ -71,7 +76,8 @@ class TUI_APP(App[None]):
         self.right_spec_audio_levels = np.array([0] * self.num_spec_bytes)
 
         # create horizontal list i.e x-axis
-        self.spec_x = [i for i in range(self.num_spec_bytes)]
+        self.dataL_x = [i for i in range(self.num_spec_bytes)]
+        self.dataR_x = [i for i in range(self.num_spec_bytes)]
 
     def compose(self) -> ComposeResult: # setup the UI
         yield self.peak_plot
@@ -80,7 +86,7 @@ class TUI_APP(App[None]):
     def on_mount(self) -> None:
         self.peak_plot.plt.title("Peak Plot")
         self.spec_plot.plt.title("Spec Plot")
-        self.update_tui_plots()
+        self.update_tui_plots()._start(self)
 
     @work(exclusive=False, thread=True)
     async def update_tui_plots(self):
@@ -108,33 +114,36 @@ class TUI_APP(App[None]):
             # learned what i needed from this https://www.yhoka.com/en/posts/fft-python/
 
             dataL_y = np.abs(np.fft.rfftn(dataL).astype(np.float64))
-            dataL_x = np.fft.rfftfreq(len(dataL), 1 / self.audio_data.RATE)
+            self.dataL_x = np.fft.rfftfreq(len(dataL), 1 / self.audio_data.RATE)
             self.left_spec_audio_levels = (dataL_y * alpha) + (self.left_spec_audio_levels * beta) # applying alpha filter
 
             dataR_y = -1 * np.abs(np.fft.rfftn(dataR).astype(np.float64))
-            dataR_x = np.fft.rfftfreq(len(dataR), 1 / self.audio_data.RATE)
+            self.dataR_x = np.fft.rfftfreq(len(dataR), 1 / self.audio_data.RATE)
             self.right_spec_audio_levels = (dataR_y * alpha) + (self.right_spec_audio_levels * beta) # applying alpha filter
 
-            self.call_from_thread(self.peak_plot.plt.clear_data)
-            self.call_from_thread(self.spec_plot.plt.clear_data)
-            
-            self.call_from_thread(self.peak_plot.plt.ylim, -0.50, 0.50)
-            self.call_from_thread(self.spec_plot.plt.ylim, -900000, 900000)
-            self.call_from_thread(self.spec_plot.plt.xlim, 0, 10000)
+            self.post_message(self.GraphUpdateMessage())
+    
+    def on_tui_app_graph_update_message(self, message: GraphUpdateMessage) -> None:
+        self.peak_plot.plt.clear_data()
+        self.spec_plot.plt.clear_data()
+        
+        self.peak_plot.plt.ylim(-0.50, 0.50)
+        self.spec_plot.plt.ylim(-900000, 900000)
+        self.spec_plot.plt.xlim(0, 2000)
 
-            self.call_from_thread(self.peak_plot.plt.bar, self.left_peak_audio_levels)
-            self.call_from_thread(self.peak_plot.plt.bar, self.right_peak_audio_levels)
+        self.peak_plot.plt.bar(self.left_peak_audio_levels, width=.5)
+        self.peak_plot.plt.bar(self.right_peak_audio_levels, width=.5)
 
-            self.call_from_thread(self.spec_plot.plt.bar, dataL_x, self.left_spec_audio_levels)
-            self.call_from_thread(self.spec_plot.plt.bar, dataR_x, self.right_spec_audio_levels)
+        self.peak_plot.refresh(self.peak_plot.region)
 
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        """Called when the worker state changes."""
-        self.log(event)
+        self.spec_plot.plt.bar(self.dataL_x, self.left_spec_audio_levels, width = 0.01)
+        self.spec_plot.plt.bar(self.dataR_x, self.right_spec_audio_levels, width = 0.01)
+
+        self.spec_plot.refresh(self.spec_plot.region, repaint=True)
 
 # main method
 if __name__ == "__main__":
-    tui_app = TUI_APP()
+    tui_app = TuiApp()
 
     tui_app.run()
     
