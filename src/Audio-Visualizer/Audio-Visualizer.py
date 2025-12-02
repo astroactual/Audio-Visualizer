@@ -5,10 +5,7 @@ import numpy as np
 from textual import work
 from textual.app import App, ComposeResult
 from textual_plotext import PlotextPlot
-from textual.worker import Worker
 from textual.message import Message
-
-#TODO possibly reinvent the wheel with this: https://medium.com/geekculture/real-time-audio-wave-visualization-in-python-b1c5b96e2d39
 
 # a QThread for audio data reading
 class AudioData():
@@ -80,14 +77,16 @@ class TuiApp(App[None]):
         self.dataR_x = [i for i in range(self.num_spec_bytes)]
 
     def compose(self) -> ComposeResult: # setup the UI
-        yield self.peak_plot
-        yield self.spec_plot
+        yield self.peak_plot # display the peak plot above
+        yield self.spec_plot # the spec plot
 
     def on_mount(self) -> None:
         self.peak_plot.plt.title("Peak Plot")
         self.spec_plot.plt.title("Spec Plot")
-        self.update_tui_plots()._start(self)
+        self.update_tui_plots()._start(self) # start the worker
 
+    # this function is the worker and it does the WORK
+    # basically reading and formatting the data to be graphed
     @work(exclusive=False, thread=True)
     async def update_tui_plots(self):
         while (self.is_running):
@@ -121,8 +120,9 @@ class TuiApp(App[None]):
             self.dataR_x = np.fft.rfftfreq(len(dataR), 1 / self.audio_data.RATE)
             self.right_spec_audio_levels = (dataR_y * alpha) + (self.right_spec_audio_levels * beta) # applying alpha filter
 
-            self.post_message(self.GraphUpdateMessage())
-    
+            self.post_message(self.GraphUpdateMessage()) # textual widgets cant be updated within a threaded worker so we send a message to say new data is ready
+
+    # this message handler just updates the graph with new data
     def on_tui_app_graph_update_message(self, message: GraphUpdateMessage) -> None:
         self.peak_plot.plt.clear_data()
         self.spec_plot.plt.clear_data()
@@ -134,16 +134,15 @@ class TuiApp(App[None]):
         self.peak_plot.plt.bar(self.left_peak_audio_levels, width=.5)
         self.peak_plot.plt.bar(self.right_peak_audio_levels, width=.5)
 
-        self.peak_plot.refresh(self.peak_plot.region)
+        self.peak_plot.refresh(self.peak_plot.region) # calling refresh here helps make the data come in without mouse movement
 
         self.spec_plot.plt.bar(self.dataL_x, self.left_spec_audio_levels, width = 0.01)
         self.spec_plot.plt.bar(self.dataR_x, self.right_spec_audio_levels, width = 0.01)
 
-        self.spec_plot.refresh(self.spec_plot.region, repaint=True)
+        self.spec_plot.refresh(self.spec_plot.region) # calling refresh here DOESNT DO SHIT for some reason.
 
 # main method
 if __name__ == "__main__":
-    tui_app = TuiApp()
-
-    tui_app.run()
+    tui_app = TuiApp() # make the app object
+    tui_app.run() # run the app object
     
