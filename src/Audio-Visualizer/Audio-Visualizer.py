@@ -158,4 +158,4 @@ class TuiApp(App):
 # main method
 if __name__ == "__main__":
     tui_app = TuiApp() # make the app object
-    tui_app.run() # run the app objectvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    tui_app.run() # run the app object
