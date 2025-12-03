@@ -133,15 +133,15 @@ class TuiApp(App):
         self.peak_plot.plt.clear_data()
         self.peak_plot.plt.ylim(-0.50, 0.50)
 
-        self.peak_plot.plt.bar(self.left_peak_audio_levels, width=.5)
-        self.peak_plot.plt.bar(self.right_peak_audio_levels, width=.5)
+        self.peak_plot.plt.bar(self.left_peak_audio_levels, width=.5, marker='•')
+        self.peak_plot.plt.bar(self.right_peak_audio_levels, width=.5, marker='•')
 
         self.spec_plot.plt.clear_data()
-        self.spec_plot.plt.ylim(-900000, 900000)
+        self.spec_plot.plt.ylim(-700000, 700000)
         self.spec_plot.plt.xlim(0, 5000)
 
-        self.spec_plot.plt.bar(self.dataL_x, self.left_spec_audio_levels, width = 0.0001)
-        self.spec_plot.plt.bar(self.dataR_x, self.right_spec_audio_levels, width = 0.0001)
+        self.spec_plot.plt.bar(self.dataL_x, self.left_spec_audio_levels, width = 0.0001, marker='•')
+        self.spec_plot.plt.bar(self.dataR_x, self.right_spec_audio_levels, width = 0.0001, marker='•')
 
         result = self.render()
 
