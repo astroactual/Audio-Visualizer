@@ -148,7 +148,9 @@ class TuiApp(App):
     def render(self):
         result = super().render()
         self.peak_plot = self.peak_plot.refresh(self.peak_plot.region)
+        self.peak_plot.focus()
         self.spec_plot = self.spec_plot.refresh(self.spec_plot.region)
+        self.spec_plot.focus()
 
         return result
 
